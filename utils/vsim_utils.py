@@ -14,11 +14,13 @@ def syntax_checker(code:str):
         )
 
         if result.returncode == 0:
+            print("OK")
             return SyntaxResponse(
                 result="OK"
             )
         else:
             errors = error_trace_extractor(trace=result.stdout)
+            #print(errors)
             return SyntaxResponse(
                 result=errors
             )
@@ -30,7 +32,9 @@ def syntax_checker(code:str):
             os.remove(filename)
 
 def error_trace_extractor(trace: str)-> str:
-    pattern = r"(\*\* Error:.*(?:\n\*\* Error:.*)*)"
-    matches = re.findall(pattern, trace)
+    print("Trace", trace)
+    pattern = re.compile(r'^\*\*\s+Error\b.*$', re.MULTILINE)
+    matches = pattern.findall(trace)
     combined = "\n".join(matches)
+    print("Final traces:", combined)
     return combined

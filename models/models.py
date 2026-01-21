@@ -1,8 +1,7 @@
-from typing_extensions import TypedDict
-
+from typing_extensions import TypedDict, NotRequired
+from typing import List
 class SyntaxRequest(TypedDict):
     code: str
 
 class SyntaxResponse(TypedDict):
-    error: bool
-    error_traces: list[str]
+    result: str

@@ -1,15 +1,8 @@
 from fastapi.responses import JSONResponse
 from fastapi import status
-from models.models import SyntaxRequest, SyntaxResponse
+from models.models import SyntaxResponse
+from utils.vsim_utils import syntax_checker
 
-def syntax_check(request: SyntaxRequest):
-
-
-
-
-    return JSONResponse(
-        content = {
-            'name':API_CONFIG['name'],
-            'environment': API_CONFIG['environment'],
-            'version':API_CONFIG['version']},
-        status_code = status.HTTP_200_OK)
+async def syntax_check(code:str)-> SyntaxResponse:
+    response = syntax_checker(code=code)
+    return response
