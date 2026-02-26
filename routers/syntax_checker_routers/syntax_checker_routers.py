@@ -1,6 +1,4 @@
-from fastapi import APIRouter, status
-from fastapi.responses import JSONResponse
-from config.config import API_CONFIG
+from fastapi import APIRouter
 from models.models import SyntaxRequest
 from responses.syntax_checker_responses import syntax_checker_responses
 
