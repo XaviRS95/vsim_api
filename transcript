@@ -1,2 +1,27 @@
-# ** UI-Msg (Error): (vish-3296) Unknown option '-access'.
-# Use the -help option for complete vsim usage.
+# vsim -voptargs="+acc=npr" -c -do "run -all; coverage save -onexit coverage.ucdb; exit" work.testbench 
+# Start time: 19:29:03 on Mar 09,2026
+# ** Note: (vsim-8009) Loading existing optimized design _opt1
+# //  Questa Sim-64
+# //  Version 2023.4 linux_x86_64 Oct  9 2023
+# //
+# //  Copyright 1991-2023 Mentor Graphics Corporation
+# //  All Rights Reserved.
+# //
+# //  QuestaSim and its associated documentation contain trade
+# //  secrets and commercial or financial information that are the property of
+# //  Mentor Graphics Corporation and are privileged, confidential,
+# //  and exempt from disclosure under the Freedom of Information Act,
+# //  5 U.S.C. Section 552. Furthermore, this information
+# //  is prohibited from disclosure under the Trade Secrets Act,
+# //  18 U.S.C. Section 1905.
+# //
+# Loading sv_std.std
+# Loading work.testbench(fast)
+# Loading work.slice_case_2(fast)
+# run -all
+# ** Error: Property p1 failed
+#    Time: 3 ns Started: 3 ns  Scope: testbench File: prueba.sv Line: 28
+# ** Note: $finish    : prueba.sv(37)
+#    Time: 5 ns  Iteration: 0  Instance: /testbench
+# End time: 19:29:03 on Mar 09,2026, Elapsed time: 0:00:00
+# Errors: 1, Warnings: 0

@@ -1,4 +1,4 @@
-import os, re, subprocess
+import os, re, subprocess, tempfile, shutil
 from models.models import SyntaxResponse, TestBenchResponse, TestBenchRequest
 
 def syntax_checker(code:str):
@@ -38,69 +38,95 @@ def error_trace_extractor(trace: str)-> str:
     print("Final traces:", combined)
     return combined
 
-def testbench_checker(request: TestBenchRequest) -> TestBenchResponse:
-    testbench_filename = 'testbench.sv'
-    dut_filename = 'dut.sv'
-    asserts_filename = 'assert.sv'
+def testbench_simulation_has_errors(output: str) -> bool:
+    """
+    Detects if Questa output contains simulation or compilation errors.
+    """
+    match = re.search(r"Errors:\s*(\d+)", output)
 
+    if match:
+        return int(match.group(1)) > 0
+
+    # fallback in case the summary line is missing
+    return "** Error:" in output
+
+
+def testbench_checker(request: TestBenchRequest) -> TestBenchResponse:
     result = ''
 
     try:
-        with open(testbench_filename, "w", encoding="utf-8") as f:
-            f.write(request['testbench'])
-        with open(dut_filename, "w", encoding="utf-8") as f:
-            f.write(request['dut'])
-        with open(asserts_filename, "w", encoding="utf-8") as f:
-            f.write(request['asserts'])
+        # Use a temporary directory for each request to avoid conflicts
+        with tempfile.TemporaryDirectory() as tmpdir:
 
-        compiling_result = subprocess.run(
-            ["vlog", "-sv", dut_filename, asserts_filename, testbench_filename],
-            capture_output=True,
-            text=True
-        )
+            testbench_filename = os.path.join(tmpdir, 'testbench.sv')
+            dut_filename = os.path.join(tmpdir, 'dut.sv')
+            asserts_filename = os.path.join(tmpdir, 'assert.sv')
 
-        compiling_result_stdout = compiling_result.stdout
-        compiling_result_returncode = compiling_result.returncode
+            # Write files
+            with open(testbench_filename, "w", encoding="utf-8") as f:
+                f.write(request['testbench'])
+            with open(dut_filename, "w", encoding="utf-8") as f:
+                f.write(request['dut'])
+            with open(asserts_filename, "w", encoding="utf-8") as f:
+                f.write(request['asserts'])
 
-        if compiling_result_returncode != 0:
+            # Ensure a fresh work library
+            work_lib = os.path.join(tmpdir, "work")
+            if os.path.exists(work_lib):
+                shutil.rmtree(work_lib)
+            subprocess.run(["vlib", "work"], cwd=tmpdir, check=True)
 
-            print(f"COMPILING RESULT: {compiling_result}")
+            # Compile
+            compiling_result = subprocess.run(
+                ["vlog", "-sv", dut_filename, asserts_filename, testbench_filename],
+                capture_output=True,
+                text=True,
+                cwd=tmpdir
+            )
 
-            result = f'Error in compiling testbench: {compiling_result_stdout}'
-
-        else:
-
-            simulation_result = subprocess.run([
-                "vsim", "-c",
-                "tb",
-                "-voptargs=+acc=npr",
-                "-do", "run -all; quit -f"
-            ])
-            simulation_returncode = simulation_result.returncode
-
-            print(f"SIMULATION RESULT: {simulation_result}")
-
-            if simulation_returncode !=0:
-
-                result = f'Error in simulating testbench: {simulation_result}'
-
+            if compiling_result.returncode != 0:
+                result = f'Error in compiling testbench:\n{compiling_result.stdout}\n{compiling_result.stderr}'
             else:
+                # Simulate
+                simulation_result = subprocess.run(
+                    [
+                        "vsim",
+                        "-voptargs=+acc=npr",  # Enable signal visibility
+                        "-c",  # Command line mode
+                        "-do", "run -all; coverage save -onexit coverage.ucdb; exit",
+                        "work.testbench"
+                    ],
+                    capture_output=True,
+                    text=True,
+                    cwd=tmpdir
+                )
 
-                result = 'OK'
+                # Combine stdout and stderr for error checking
+                sim_output = simulation_result.stdout + simulation_result.stderr
+
+                sim_failed = testbench_simulation_has_errors(output=sim_output)
+
+                coverage_file = os.path.join(tmpdir, "coverage.ucdb")
+
+                if os.path.exists(coverage_file):
+                    coverage_result = subprocess.run(
+                        ["vcover", "report", "-details", "-all", coverage_file],
+                        capture_output=True,
+                        text=True,
+                        cwd=tmpdir
+                    )
+                    coverage_output = coverage_result.stdout
+                    print("Coverage Report:\n", coverage_output)
+
+                if sim_failed:
+                    print(sim_output)
+                    result = f'Error in simulating testbench:\n{sim_output}'
+                else:
+                    result = 'OK'
 
     except Exception as e:
-        print(e)
+        import traceback
+        traceback.print_exc()
+        result = f'Internal error: {e}'
 
-        result=f'Internal error: {e}'
-
-    finally:
-        if os.path.exists(testbench_filename):
-            os.remove(testbench_filename)
-        if os.path.exists(dut_filename):
-            os.remove(dut_filename)
-        if os.path.exists(asserts_filename):
-            os.remove(asserts_filename)
-
-        return TestBenchResponse(
-                result=result
-            )
+    return TestBenchResponse(result=result)
