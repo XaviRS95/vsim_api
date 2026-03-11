@@ -1,4 +1,4 @@
-import os, re, subprocess, tempfile, shutil
+import os, re, subprocess, tempfile, shutil, traceback
 from models.models import SyntaxResponse, TestBenchResponse, TestBenchRequest
 
 def syntax_checker(code:str):
@@ -52,7 +52,8 @@ def testbench_simulation_has_errors(output: str) -> bool:
 
 
 def testbench_checker(request: TestBenchRequest) -> TestBenchResponse:
-    result = ''
+    is_testbench_correct = True
+    coverage_report = ''
 
     try:
         # Use a temporary directory for each request to avoid conflicts
@@ -78,28 +79,70 @@ def testbench_checker(request: TestBenchRequest) -> TestBenchResponse:
 
             # Compile
             compiling_result = subprocess.run(
-                ["vlog", "-sv", dut_filename, asserts_filename, testbench_filename],
+                ["vlog",
+                 "-sv",
+                 "+cover=bcesft",
+                 dut_filename,
+                 asserts_filename,
+                 testbench_filename
+                 ],
                 capture_output=True,
                 text=True,
                 cwd=tmpdir
             )
 
             if compiling_result.returncode != 0:
-                result = f'Error in compiling testbench:\n{compiling_result.stdout}\n{compiling_result.stderr}'
+                print(compiling_result.stdout)
+                is_testbench_correct = False
             else:
+
+                # Create do file with proper coverage save
+                do_content = """
+                # Set up automatic coverage save on exit
+                coverage save -onexit -assert -directive -cvg -codeAll coverage.ucdb
+
+                # Run the simulation
+                run -all
+
+                # In case the testbench doesn't have $finish, save explicitly
+                coverage save coverage.ucdb
+
+                # Quit
+                quit -f
+                """
+
+                do_file = os.path.join(tmpdir, "run.do")
+                with open(do_file, "w") as f:
+                    f.write(do_content)
+
                 # Simulate
                 simulation_result = subprocess.run(
                     [
                         "vsim",
-                        "-voptargs=+acc=npr",  # Enable signal visibility
-                        "-c",  # Command line mode
-                        "-do", "run -all; coverage save -onexit coverage.ucdb; exit",
-                        "work.testbench"
+                        "-coverage",
+                        "-voptargs=+acc=npr",
+                        "-c",
+                        "-do", "run.do",
+                        "work.tb"
                     ],
                     capture_output=True,
                     text=True,
                     cwd=tmpdir
                 )
+
+                # Check if coverage file exists
+                coverage_file = os.path.join(tmpdir, "coverage.ucdb")
+                if os.path.exists(coverage_file):
+                    print("Coverage file generated successfully!")
+                else:
+                    print("Coverage file NOT generated")
+
+                    # Check if there were any issues with the save command
+                    transcript_file = os.path.join(tmpdir, "transcript")
+                    if os.path.exists(transcript_file):
+                        with open(transcript_file, 'r') as f:
+                            transcript = f.read()
+                            print("Last part of transcript:", transcript[-500:])  # Show last 500 chars
 
                 # Combine stdout and stderr for error checking
                 sim_output = simulation_result.stdout + simulation_result.stderr
@@ -115,18 +158,20 @@ def testbench_checker(request: TestBenchRequest) -> TestBenchResponse:
                         text=True,
                         cwd=tmpdir
                     )
-                    coverage_output = coverage_result.stdout
-                    print("Coverage Report:\n", coverage_output)
+                    coverage_report = coverage_result.stdout
+                    print("Coverage Report:\n", coverage_report)
+                else:
+                    print('Unable to locate coverage file', coverage_file)
 
                 if sim_failed:
                     print(sim_output)
-                    result = f'Error in simulating testbench:\n{sim_output}'
-                else:
-                    result = 'OK'
+                    is_testbench_correct = False
 
     except Exception as e:
-        import traceback
         traceback.print_exc()
-        result = f'Internal error: {e}'
+        is_testbench_correct = False
 
-    return TestBenchResponse(result=result)
+    return TestBenchResponse(
+        correctness = is_testbench_correct,
+        coverage_report = coverage_report
+    )

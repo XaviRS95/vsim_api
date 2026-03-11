@@ -12,4 +12,5 @@ class TestBenchRequest(TypedDict):
     asserts: str
 
 class TestBenchResponse(TypedDict):
-    result: str
+    correctness: bool
+    coverage_report: str
