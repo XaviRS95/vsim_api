@@ -1,5 +1,6 @@
 import os, re, subprocess, tempfile, shutil, traceback
 from models.models import SyntaxResponse, TestBenchResponse, TestBenchRequest
+from .regex_utils import extract_report_data
 
 def syntax_checker(code:str):
     filename = "prueba.sv"
@@ -52,8 +53,9 @@ def testbench_simulation_has_errors(output: str) -> bool:
 
 
 def testbench_checker(request: TestBenchRequest) -> TestBenchResponse:
-    is_testbench_correct = True
-    coverage_report = ''
+    total_errors = 0
+    coverage_pct = 0
+    testing_data = ''
 
     try:
         # Use a temporary directory for each request to avoid conflicts
@@ -92,7 +94,7 @@ def testbench_checker(request: TestBenchRequest) -> TestBenchResponse:
             )
 
             if compiling_result.returncode != 0:
-                print(compiling_result.stdout)
+                #print(compiling_result.stdout)
                 is_testbench_correct = False
             else:
 
@@ -142,7 +144,7 @@ def testbench_checker(request: TestBenchRequest) -> TestBenchResponse:
                     if os.path.exists(transcript_file):
                         with open(transcript_file, 'r') as f:
                             transcript = f.read()
-                            print("Last part of transcript:", transcript[-500:])  # Show last 500 chars
+                            #print("Last part of transcript:", transcript[-500:])  # Show last 500 chars
 
                 # Combine stdout and stderr for error checking
                 sim_output = simulation_result.stdout + simulation_result.stderr
@@ -159,19 +161,29 @@ def testbench_checker(request: TestBenchRequest) -> TestBenchResponse:
                         cwd=tmpdir
                     )
                     coverage_report = coverage_result.stdout
-                    print("Coverage Report:\n", coverage_report)
+
+                    coverage_data = extract_report_data(coverage_report=coverage_report)
+
+                    #print(coverage_data)
+
+                    testing_data = coverage_data['testing_data']
+                    coverage_pct = coverage_data['coverage_pct']
+                    total_errors = coverage_data['total_errors']
+
                 else:
                     print('Unable to locate coverage file', coverage_file)
 
                 if sim_failed:
-                    print(sim_output)
-                    is_testbench_correct = False
+                    #print(sim_output)
+                    pass
+
 
     except Exception as e:
         traceback.print_exc()
-        is_testbench_correct = False
+
 
     return TestBenchResponse(
-        correctness = is_testbench_correct,
-        coverage_report = coverage_report
+        total_errors = total_errors,
+        coverage_pct = coverage_pct,
+        testing_data = testing_data
     )
